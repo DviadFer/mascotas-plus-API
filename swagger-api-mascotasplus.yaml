@@ -1,0 +1,502 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: MascotasPlusAPI
+  description: API REST de una aplicación/web que permite publicar cuándo vas a sacar a pasear a tu mascota y por dónde. También permite buscar paseos publicados por otros usuarios y solicitar unirse
+servers:
+  - url: http://raspi:8003/rest
+paths:
+  /version/1/users:
+    post:
+      description: |
+        Registra un nuevo usuario
+      requestBody:
+        description: Datos del nuevo usuario. El usuario los cubre en un formulario mediante la aplicación cliente, que los envía en el cuerpo de esta petición
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NuevoUsuarioCuerpoPeticion'
+            example:
+              name: Pepe
+              surname: Depura
+              email: pepedepura@fpcoruna.afundacion.org
+              password: mypass1234
+      responses:
+        '201':
+          description: Creado con éxito
+        '400':
+          description: La petición ha fallado porque falta alguno de los parámetros o no es válido
+        '409':
+          description: La petición ha fallado porque ya existe un usuario registrado con ese email
+  /version/1/sessions:
+    post:
+      description: |
+        Permite a un usuario hacer login. Se recibe la contraseña y se devuelve un token de acceso.
+        
+        Las aplicaciones cliente deben almacenar el token de acceso para usarlo en futuras peticiones que requieren autenticación, donde se mandará como cabecera HTTP.
+      requestBody:
+        description: Correo electrónico y contraseña del usuario que quiere hacer login
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginUsuarioCuerpoPeticion'
+            example:
+              email: pepedepura@fpcoruna.afundacion.org
+              password: mypass1234
+      responses:
+        '201':
+          description: |
+            Usuario logueado con éxito.
+            
+            La aplicación cliente debe almacenar el user_id y token recibidos en la respuesta.
+            
+            Después de un login exitoso, la aplicación cliente debe enviar un GET walks para enseñarle al usuarios los paseos que ha programado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginUsuarioCuerpoRespuesta'
+              example:
+                user_id: 3
+                name: Pepe
+                token: 39kgZPajuUCP4YEbZFqL
+        '400':
+          description: La petición ha fallado porque falta alguno de los parámetros
+        '401':
+          description: La petición ha fallado porque la contraseña es incorrecta
+        '404':
+          description: La petición ha fallado porque el usuario no existe
+  /version/1/walks:
+    get:
+      description: |
+        Devuelve una lista de paseos. Acepta parámetros. Requiere que el usuario esté autenticado.
+        
+        Esta petición tiene dos usos principales:
+        - Cuando el usuario abre la aplicación, se pide la lista de paseos que ha programado. Esto requiere que se mande el parámetro de query 'author_user_id'. Los paseos irán ordenados de más reciente a más antiguo.
+        - Cuando el usuario selecciona el menú Paseos Cercanos en la aplicación cliente, se pide la lista de paseos SIN COMENZAR próximos a su ubicación actual. Esto requiere que se manden los parámetros 'latitude', 'longitude', 'radius' y 'not_started'.
+        
+        Si no se mandan parámetros suficientes para cubrir uno de estos 2 casos de uso, se devolverá un error (NO se devolverán TODOS los paseos)
+      parameters:
+        - name: author_user_id
+          in: query
+          description: ID del usuario autor de los paseos solicitados. Debe coincidir con el ID de usuario asociado a la sesión que corresponde con el token de autenticación
+          required: false
+          schema:
+            type: integer
+          example: 3
+        - name: latitude
+          in: query
+          description: |
+            Latitud de una coordenada terrestre (en formato decimal). Se usa para describir un área (círculo) de búsqueda.
+            
+            Se corresponderá con la latitud de la ubicación real del dispositivo cliente.
+          required: false
+          schema:
+            type: number
+            format: float
+          example: -33.885643
+        - name: longitude
+          in: query
+          description: |
+            Longitud de una coordenada terrestre (en formato decimal). Se usa para describir un área (círculo) de búsqueda.
+            
+            Se corresponderá con la longitud de la ubicación real del dispositivo cliente.
+          required: false
+          schema:
+            type: number
+            format: float
+          example: 151.187424
+        - name: radius
+          in: query
+          description: Radio en kilómetros del área de búsqueda de paseos.
+          required: false
+          schema:
+            type: number
+            format: float
+          example: 10
+        - name: not_started
+          in: query
+          description: Si se envía el parámetro, se devuelven sólo paseos cuya fecha es posterior a la fecha del servidor (paseos en el futuro; sin empezar). Sólo se prevee que se mande este parámetro a 'true' en conjunto con 'latitude', 'longitude' y 'radius'
+          required: false
+          schema:
+            type: boolean
+          example: true
+        - name: token
+          in: header
+          description: Token de autenticación del usuario. Debe ser un token válido devuelto por una petición de login
+          required: true
+          schema:
+            type: string
+          example: 39kgZPajuUCP4YEbZFqL
+      responses:
+        '200':
+          description: Lista de paseos a mostrar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ObjetoPaseo'
+              examples:
+                user_walks:
+                  summary: Paseos programados por usuario con ID 3
+                  value:
+                    - id: 14
+                      author_name: Pepe
+                      datetime: '2022-05-09T19:30:00Z'
+                      latitude: -34.885643
+                      longitude: 151.035698
+                    - id: 2
+                      author_name: Pepe
+                      datetime: '2022-03-12T21:00:00Z'
+                      latitude: -33.785567
+                      longitude: 150.935677
+                nearby_walks:
+                  summary: Paseos próximos a un usuario 
+                  value:
+                    - id: 14
+                      author_name: Pepe
+                      datetime: '2022-03-12T21:00:00Z'
+                      latitude: -33.785567
+                      longitude: 150.935677
+                    - id: 298
+                      author_name: Alice
+                      datetime: '2022-04-12T20:00:00Z'
+                      latitude: -33.781568
+                      longitude: 150.895623
+                    - id: 56
+                      author_name: Bob
+                      datetime: '2022-03-17T20:35:00Z'
+                      latitude: -33.800059
+                      longitude: 150.915689
+        '400':
+          description: |
+            La petición ha fallado porque no se ha especificado 'author_user_id', o el conjunto de 'latitude'+'longitude'+'radius'+'not_started'.
+            
+            También, en caso de que algún parámetro sea inválido
+        '401':
+          description: La petición ha fallado porque no se ha enviado el token de autenticación en las cabeceras
+        '403':
+          description: La petición ha fallado porque el token de autenticación no es válido, o bien no está asociado al 'author_user_id' enviado
+    post:
+      description: |
+        Permite a un usuario crear un nuevo paseo.
+      parameters:
+        - name: token
+          in: header
+          description: Token de autenticación del usuario. Debe ser un token válido devuelto por una petición de login
+          required: true
+          schema:
+            type: string
+          example: 39kgZPajuUCP4YEbZFqL
+      requestBody:
+        description: |
+          Datos del paseo seleccionados por el usuario mediante un formulario. La latitud y la longitud serán capturados a través de un mapa interactivo.
+          
+          El servidor identifica al usuario autor del paseo mediante el token de sesión, para almacenar el paseo con los datos correctos.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearPaseoCuerpoPeticion'
+            example:
+              datetime: '2022-03-12T21:00:00Z'
+              latitude: -33.785567
+              longitude: 150.935677
+      responses:
+        '201':
+          description: Creado con éxito. La aplicación cliente debe refrescar la lista de paseos después de esta respuesta, enviando de nuevo un GET events
+        '400':
+          description: La petición ha fallado porque alguno de los parámetros no está o es inválido
+        '401':
+          description: La petición ha fallado porque no se ha enviado el token de autenticación en las cabeceras
+        '403':
+          description: La petición ha fallado porque el token de sesión no es válido
+  /version/1/walks/{id}:
+    get:
+      description: |
+        Devuelve los datos de un paseo específico y la información de las personas que han solicitado unirse al paseo.
+        
+        Esta petición se usa para que los usuarios vean el detalle de un paseo organizado por ellos y la lista de acompañantes disponibles. Luego, pueden aceptar cada acompañante, o no.
+        
+        Cada oferta de acompañante tiene, entre otros, un atributo booleano 'is_accepted'. En caso de que un acompañante venga con 'is_accepted' a true, la aplicación cliente no debe permitir volver a aceptarlo.
+      parameters:
+        - name: id
+          in: path
+          description: ID del paseo a recibir
+          required: true
+          schema:
+            type: integer
+          example: 14
+        - name: token
+          in: header
+          description: Token de autenticación del usuario. Debe ser un token válido devuelto por una petición de login
+          required: true
+          schema:
+            type: string
+          example: 39kgZPajuUCP4YEbZFqL
+      responses:
+        '200':
+          description: Datos del paseo y sus potenciales acompañantes. El array de acompañantes en potencia puede venir vacío, pero es obligatorio.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaseoDetalleCuerpoRespuesta'
+              example:
+                author_name: Pepe
+                datetime: '2022-03-12T21:00:00Z'
+                latitude: -33.785567
+                longitude: 150.935677
+                companion_requests:
+                  - request_id: 591
+                    user_name: Riven
+                    message: ¡Hola! Me encantaría pasear mi caniche contigo
+                    is_accepted: true
+                  - request_id: 592
+                    user_name: Quinn
+                    message: Tengo dos gatos... Los paseo a esa misma hora.
+                    is_accepted: false
+                  - request_id: 593
+                    user_name: Gragas
+                    message: Si te apetece te acompaño con los perretes y luego me invitas a unas cañas!!
+                    is_accepted: true
+        '401':
+          description: La petición ha fallado porque no se ha enviado el token de autenticación en las cabeceras
+        '403':
+          description: La petición ha fallado porque el token de sesión no es válido
+        '404':
+          description: La petición ha fallado porque no existe un paseo con el ID especificado
+  /version/1/walks/{id}/companions:
+    post:
+      description: |
+        Desde una aplicación cliente, un usuario solicita ser acompañante de otro en un paseo
+      parameters:
+        - name: id
+          in: path
+          description: ID del paseo
+          required: true
+          schema:
+            type: integer
+          example: 14
+        - name: token
+          in: header
+          description: Token de autenticación del usuario. Debe ser un token válido devuelto por una petición de login
+          required: true
+          schema:
+            type: string
+          example: 39kgZPajuUCP4YEbZFqL
+      requestBody:
+        description: Datos enviados por el solicitante. Únicamente un mensaje de presentación
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearSolicitudCuerpoPeticion'
+            example:
+              message: ¿Qué tal? Me gustaría acompañarte en el paseo, soy muy charlatán eso sí! :D
+      responses:
+        '201':
+          description: La solicitud de acompañamiento se ha creado con éxito
+        '401':
+          description: La petición ha fallado porque no se ha enviado el token de autenticación en las cabeceras
+        '403':
+          description: La petición ha fallado porque el token de sesión no es válido
+        '404':
+          description: La petición ha fallado porque no existe un paseo con el ID especificado
+  /version/1/walks/{id}/companions/{request_id}:
+    post:
+      description: |
+        Desde una aplicación cliente, un usuario acepta una solicitud de acompañamiento.
+        
+        Esta petición POST tiene la particularidad de que no se envía nada en el cuerpo.
+        
+        El usuario que efectuó la solicitud recibe un correo electrónico de confirmación.
+      parameters:
+        - name: id
+          in: path
+          description: ID del paseo
+          required: true
+          schema:
+            type: integer
+          example: 14
+        - name: request_id
+          in: path
+          description: ID de la solicitud aceptada
+          required: true
+          schema:
+            type: integer
+          example: 592
+        - name: token
+          in: header
+          description: Token de autenticación del usuario. Debe ser un token válido devuelto por una petición de login
+          required: true
+          schema:
+            type: string
+          example: 39kgZPajuUCP4YEbZFqL
+      responses:
+        '201':
+          description: |
+            La solicitud se ha aceptado con éxito. El usuario acompañante recibirá un e-mail de confirmación con el nombre del organizador del paseo y los datos del paseo (ubicación y hora de comienzo).
+            
+            El atributo 'is_accepted' de la solicitud se grabará a true en la base de datos
+        '401':
+          description: La petición ha fallado porque no se ha enviado el token de autenticación en las cabeceras
+        '403':
+          description: La petición ha fallado porque el token de sesión no es válido
+        '404':
+          description: La petición ha fallado porque no existe un paseo con el ID especificado o una solicitud de acompañamiento con el ID especificado
+components:
+  schemas:
+    NuevoUsuarioCuerpoPeticion:
+      type: object
+      required:
+        - name
+        - surname
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          description: Nombre real del usuario
+        surname:
+          type: string
+          description: Apellido(s) del usuario
+        email:
+          type: string
+          format: email
+          description: Correo electrónico del usuario
+        password:
+          type: string
+          format: password
+          description: Contraseña creada por el usuario
+    LoginUsuarioCuerpoPeticion:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: Correo electrónico del usuario
+        password:
+          type: string
+          format: password
+          description: Contraseña creada por el usuario  
+    LoginUsuarioCuerpoRespuesta:
+      type: object
+      required:
+        - user_id
+        - name
+        - token
+      properties:
+        user_id:
+          type: integer
+          description: ID del usuario que se ha logueado. Las aplicaciones clientes deberán preservar este valor para realizar futuras peticiones
+        name:
+          type: string
+          description: Nombre del usuario que se ha logueado. Puede ser usado por las aplicaciones cliente para dar un mensaje de bienvenida.
+        token:
+          type: string
+          description: Churro aleatorio de bytes que identifican la sesión de un usuario y le permiten realizar peticiones que requieren autenticación
+    ObjetoPaseo:
+      type: object
+      required:
+        - id
+        - author_name
+        - datetime
+        - latitude
+        - longitude
+      properties:
+        id:
+          type: integer
+          description: ID del paseo.
+        author_name:
+          type: string
+          description: Nombre del usuario que creó el paseo  
+        datetime:
+          type: string
+          format: date-time
+          description: Fecha y hora a la que empezará el paseo. Es la que introdujo el usuario cuando lo creó. Se formatea de acuerdo al RFC 3339, sección 5.6. Por ejemplo, 2017-07-21T17:32:28Z
+        latitude:
+          type: number
+          format: float
+          description: Latitud de la ubicación donde comenzará el paseo
+        longitude:
+          type: number
+          format: float
+          description: Longitud de la ubicación donde comenzará el paseo
+    CrearPaseoCuerpoPeticion:
+      type: object
+      required:
+        - datetime
+        - latitude
+        - longitude
+      properties:
+        datetime:
+          type: string
+          format: date-time
+          description: Fecha y hora a la que empezará el paseo. Se formatea de acuerdo al RFC 3339, sección 5.6. Por ejemplo, 2017-07-21T17:32:28Z
+        latitude:
+          type: number
+          format: float
+          description: Latitud de la ubicación de inicio del paseo. Se selecciona mediante un mapa interactivo
+        longitude:
+          type: number
+          format: float
+          description: Longitud de la ubicación de inicio del paseo. Se selecciona mediante un mapa interactivo
+    PaseoDetalleCuerpoRespuesta:
+      type: object
+      required:
+        - author_name
+        - datetime
+        - latitude
+        - longitude
+        - companion_requests
+      properties:
+        author_name:
+          type: string
+          description: Nombre del usuario que creó el paseo  
+        datetime:
+          type: string
+          format: date-time
+          description: Fecha y hora a la que empezará el paseo. Se formatea de acuerdo al RFC 3339, sección 5.6. Por ejemplo, 2017-07-21T17:32:28Z
+        latitude:
+          type: number
+          format: float
+          description: Latitud de la ubicación de inicio del paseo. Se selecciona mediante un mapa interactivo
+        longitude:
+          type: number
+          format: float
+          description: Longitud de la ubicación de inicio del paseo. Se selecciona mediante un mapa interactivo
+        companion_requests:
+          type: array
+          items:
+            type: object
+            required:
+              - request_id
+              - user_name
+              - message
+              - is_accepted
+            properties:
+              request_id:
+                type: integer
+                description: ID de la solicitud de unirse al paseo. Cada solicitud tiene un ID único.
+              user_name:
+                type: string
+                description: Nombre del usuario que ha mandado la solicitud de acompañamiento
+              message:
+                type: string
+                description: Campo de texto libre donde el usuario que solicita ser compañero añade información describiéndose a sí mismo, a modo de introducción.
+              is_accepted:
+                type: boolean
+                description: Atributo booleano que indica si esta oferta ha sido aceptada. Las ofertas se aceptan desde la aplicación cliente enviado una petición POST descrita en este API. Una vez aceptadas, no se pueden declinar y no se puede aceptar otra oferta.
+    CrearSolicitudCuerpoPeticion:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Campo de texto libre donde el usuario se describe a sí mismo o añade un mensaje cualquiera de introducción para suscitar el interés del organizador del paseo
