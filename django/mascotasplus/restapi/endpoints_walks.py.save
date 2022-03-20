@@ -1,0 +1,48 @@
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+from datetime import datetime
+from .models import Twalk, Tuser
+from .formula_haversine import calcularDistancia
+
+@csrf_exempt
+def request_walk(request):
+	if request.method == 'GET':
+		token = request.headers['token']
+		try:
+			user_id = request.GET['author_user_id']
+			latitude = request.GET['latitude']
+			longitude = request.GET['longitude']
+			radius = request.GET['radius']
+			not_started = request.GET['not_started']
+		except (ValueError, MultiValueDictKeyError):
+			return JsonResponse(status=400, data={})
+		usuario = Tuser.objects.get(id = user_id)
+		lista_paseos = []
+		if (not_started == 'true'):
+			walks = Twalk.objects.filter(author_id = usuario.id, datetime__gte = datetime.now())
+			for row in walks:
+				data = {}
+				if (calcularDistancia(latitude, longitude, row.latitude, row.longitude)<=float(radius)):
+					data['id'] = row.id
+					data['author_name'] = usuario.name
+					data['datetime'] = row.datetime
+					data['latitude'] = row.latitude
+					data['longitude'] = row.longitude
+					lista_paseos.append(data)
+		else:
+			walks = Twalk.objects.filter(author_id = usuario.id)
+			for row in walks:
+				data = {}
+				data['id'] = row.id
+				data['author_name'] = usuario.name
+				data['datetime'] = row.datetime
+				data['latitude'] = row.latitude
+				data['longitude'] = row.longitude
+				lista_paseos.append(data)
+		return JsonResponse(lista_paseos, status=200, safe=False)
+
+	else:
+		return HttpResponse('<h1>Test</h1>')
+
+
